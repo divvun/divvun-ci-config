@@ -1,0 +1,253 @@
+parameters:
+  divvun_bundler_macos: "https://github.com/divvun/divvun-bundler/releases/download/0.1.0/divvun-bundler-macos"
+  divvun_bundler_win: "https://github.com/divvun/divvun-bundler/releases/download/0.1.0/divvun-bundler.exe"
+  win_reg_tool: "https://github.com/fry/win-reg-tool/releases/download/0.1.3/win-reg-tool.exe"
+  pahkat_macos: "https://github.com/divvun/pahkat/releases/download/0.6.0/pahkat-macos"
+  pahkat_win: "https://github.com/divvun/pahkat/releases/download/0.6.0/pahkat.exe"
+
+jobs:
+  - job: "macOS"
+    pool:
+      vmImage: "macOS-10.14"
+    variables:
+      package_name: "speller-${{ parameters.name }}.pkg"
+    steps:
+      - script: |
+          set -e
+          git clone https://github.com/divvun/divvun-ci-config.git
+          cd divvun-ci-config
+          sh ./install-macos.sh
+          wget ${{ parameters.pahkat_macos }} -O pahkat
+          chmod +x pahkat
+          wget ${{ parameters.divvun_bundler_macos }} -O divvun-bundler
+          chmod +x divvun-bundler
+        displayName: "Install prerequisites"
+        env:
+          DIVVUN_KEY: $(divvunKey)
+      - ${{ each lang in parameters.languages }}:
+          - script: |
+              set -e
+              sh divvun-ci-config/repo/scripts/download_speller.sh "https://apertium.projectjj.com/apt/nightly/pool/main/g/${{ lang.projectjjName }}/" "${{ lang.path }}" "${{ lang.name }}.zhfst"
+              echo "##vso[task.setvariable variable=bundler]$BUNDLER -l \"${{ lang.name }}\" -z \"${{ lang.name }}.zhfst\""
+            displayName: "Download Speller ${{ lang.name }}"
+      - script: |
+          set -e
+          export PATH="$PATH:$(System.DefaultWorkingDirectory)/divvun-ci-config"
+          export DEPLOY_VERSION=$(cat version.txt | xargs)
+          divvun-bundler -R -o output -t osx -H "${{ parameters.humanName }}" -V $DEPLOY_VERSION \
+            -a "Developer ID Application: The University of Tromso (2K5J2584NX)" \
+            -i "Developer ID Installer: The University of Tromso (2K5J2584NX)" \
+            speller -f "${{ parameters.name }}" $(bundler)
+          mv output/${{ parameters.name }}-$DEPLOY_VERSION.pkg "$(package_name)"
+        displayName: "Build"
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: "$(System.DefaultWorkingDirectory)/$(package_name)"
+          artifactName: macos
+      - script: |
+          set -e
+          export PATH="$PATH:$(System.DefaultWorkingDirectory)/divvun-ci-config"
+          export DEPLOY_VERSION=$(cat version.txt | xargs)
+          sh divvun-ci-config/repo/scripts/pahkat_deploy_svn.sh "${{ parameters.repositoryMac }}" "$(pwd)/$(package_name)" "speller-${{ parameters.name }}" $DEPLOY_VERSION
+        displayName: "Deploy to nightly channel"
+        env:
+          DEPLOY_SVN_USER: $(svnUser)
+          DEPLOY_SVN_PASSWORD: $(svnPassword)
+          DEPLOY_SVN_COMMIT: $(svnCommit)
+  - job: "macOS_libreoffice"
+    pool:
+      vmImage: "macOS-10.14"
+    variables:
+      package_name: "speller-${{ parameters.name }}-lo.pkg"
+    steps:
+      - script: |
+          set -e
+          git clone https://github.com/divvun/divvun-ci-config.git
+          cd divvun-ci-config
+          sh ./install-macos.sh
+          wget ${{ parameters.pahkat_macos }} -O pahkat
+          chmod +x pahkat
+        displayName: "Install prerequisites"
+        env:
+          DIVVUN_KEY: $(divvunKey)
+      - ${{ each lang in parameters.languages }}:
+          - script: |
+              set -e
+              sh divvun-ci-config/repo/scripts/download_speller.sh "https://apertium.projectjj.com/apt/nightly/pool/main/g/${{ lang.projectjjName }}/" "${{ lang.path }}" "${{ lang.name }}.zhfst"
+            displayName: "Download Speller ${{ lang.name }}"
+      - script: |
+          set -e
+          export PATH="$PATH:$(System.DefaultWorkingDirectory)/divvun-ci-config"
+          export DEPLOY_VERSION=$(cat version.txt | xargs)
+          sh divvun-ci-config/repo/scripts/generate_dist.sh "${{ parameters.humanName }} LibreOffice" "no.uit.spellers.libreoffice.${{ parameters.name }}" "$(package_name)" > dist.xml
+          ls -lah
+          mkdir -p "${{ parameters.name }}/etc/voikko/3"
+          mv *.zhfst "${{ parameters.name }}/etc/voikko/3"
+          pkgbuild --root "${{ parameters.name }}" --ownership recommended --version $DEPLOY_VERSION --identifier "no.uit.spellers.libreoffice.${{ parameters.name }}" "$(package_name)"
+          productbuild --distribution dist.xml --version $DEPLOY_VERSION --package-path build "speller-${{ parameters.name }}-lo.unsigned.pkg"
+          productsign --sign "Developer ID Installer: The University of Tromso (2K5J2584NX)" "speller-${{ parameters.name }}-lo.unsigned.pkg" "$(package_name)"
+          pkgutil --check-signature $(package_name)
+        displayName: "Build"
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: "$(System.DefaultWorkingDirectory)/$(package_name)"
+          artifactName: macos
+      - script: |
+          set -e
+          export PATH="$PATH:$(System.DefaultWorkingDirectory)/divvun-ci-config"
+          export DEPLOY_VERSION=$(cat version.txt | xargs)
+          sh divvun-ci-config/repo/scripts/pahkat_deploy_svn.sh "${{ parameters.repositoryMac }}" "$(pwd)/$(package_name)" "speller-${{ parameters.name }}-lo" $DEPLOY_VERSION
+        displayName: "Deploy to nightly channel"
+        env:
+          DEPLOY_SVN_USER: $(svnUser)
+          DEPLOY_SVN_PASSWORD: $(svnPassword)
+          DEPLOY_SVN_COMMIT: $(svnCommit)
+  - job: "Windows"
+    variables:
+      installer_name: "speller-${{ parameters.name }}.exe"
+    pool:
+      vmImage: "vs2017-win2016"
+    steps:
+      - bash: |
+          set -e
+          curl -sLo LockedList.zip https://nsis.sourceforge.io/mediawiki/images/d/d3/LockedList.zip
+          unzip LockedList.zip "Plugins/*" -d "C:\Program Files (x86)\NSIS" -q
+          unzip LockedList.zip "Plugins/x86-ansi/*" -d "C:\Program Files (x86)\NSIS" -q
+          unzip LockedList.zip "Plugins/x86-unicode/*" -d "C:\Program Files (x86)\NSIS" -q
+          curl -sLo pahkat.exe ${{ parameters.pahkat_win }}
+          curl -sLo divvun-bundler.exe ${{ parameters.divvun_bundler_win }}
+          git clone https://github.com/divvun/divvun-ci-config.git
+          openssl aes-256-cbc -d -in ./divvun-ci-config/config.txz.enc -pass pass:$DIVVUN_KEY -out config.txz -md md5
+          7z e config.txz
+          tar xf config.tar
+        displayName: "Install prerequisites"
+        env:
+          DIVVUN_KEY: $(divvunKey)
+      - ${{ each lang in parameters.languages }}:
+          - powershell: |
+              $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+              . .\divvun-ci-config\repo\scripts\DownloadSpeller.ps1
+              DownloadSpeller -From "https://apertium.projectjj.com/apt/nightly/pool/main/g/${{ lang.projectjjName }}" -Match "^${{ lang.projectjjName }}_.*\.deb$" -SourceFile "${{ lang.path }}" -OutFile "${{ lang.name }}.zhfst"
+
+              Write-Host "##vso[task.setvariable variable=bundler]$Env:BUNDLER -l '${{ coalesce(lang.nameWin, lang.name) }}' -z '${{ lang.name }}.zhfst'"
+            displayName: "Download Speller ${{ lang.name }}"
+      - powershell: |
+          $Env:PATH += ";C:\Program Files (x86)\Microsoft SDKs\ClickOnce\SignTool"
+          $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          $Env:RUST_LOG = "info"
+          divvun-bundler -R -t win -o output --uuid "{${{ parameters.uuidWin }}}" -H "${{ parameters.humanName }}" -V $version -c .\enc\creds\windows\divvun.pfx speller -f "${{ parameters.name }}" $(bundler)
+          Rename-Item -Path "output\${{ parameters.name }}-$version.exe" -NewName "$(installer_name)"
+        displayName: "Build"
+        env:
+          SIGN_PFX_PASSWORD: $(pfxPassword)
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: "$(System.DefaultWorkingDirectory)/output/$(installer_name)"
+          artifactName: windows
+      - powershell: |
+          $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          . .\divvun-ci-config\repo\scripts\PahkatDeploySvn.ps1
+          PahkatDeploySvn -SvnUrl "${{ parameters.repositoryWin }}" -Artifact "$(System.DefaultWorkingDirectory)\output\$(installer_name)" -Package speller-${{ parameters.name }} -Version $version
+        displayName: "Deploy to nightly channel"
+        env:
+          DEPLOY_SVN_USER: $(svnUser)
+          DEPLOY_SVN_PASSWORD: $(svnPassword)
+          DEPLOY_SVN_COMMIT: $(svnCommit)
+  - job: "Windows_libreoffice"
+    pool:
+      vmImage: "vs2017-win2016"
+    variables:
+      installer_name: "speller-${{ parameters.name }}-lo.exe"
+    steps:
+      - bash: |
+          set -e
+          curl -sLo pahkat.exe ${{ parameters.pahkat_win }}
+          git clone https://github.com/divvun/divvun-ci-config.git
+          openssl aes-256-cbc -d -in ./divvun-ci-config/config.txz.enc -pass pass:$DIVVUN_KEY -out config.txz -md md5
+          7z e config.txz
+          tar xf config.tar
+        displayName: "Install prerequisites"
+        env:
+          DIVVUN_KEY: $(divvunKey)
+      - ${{ each lang in parameters.languages }}:
+          - powershell: |
+              $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+              . .\divvun-ci-config\repo\scripts\DownloadSpeller.ps1
+              DownloadSpeller -From "https://apertium.projectjj.com/apt/nightly/pool/main/g/${{ lang.projectjjName }}" -Match "^${{ lang.projectjjName }}_.*\.deb$" -SourceFile "${{ lang.path }}" -OutFile "${{ lang.name }}.zhfst"
+            displayName: "Download Speller ${{ lang.name }}"
+      - powershell: |
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          . .\divvun-ci-config\repo\scripts\BundleLibreOffice.ps1
+          GenerateSpellerSetup -Name "${{ parameters.humanName }} LibreOffice" -UUID "${{ parameters.uuidLO }}" -Version $version -LanguageTag "${{ parameters.name }}"
+          InvokeIscc -IssFile .\setup.iss -PfxPath "$(System.DefaultWorkingDirectory)\enc\creds\windows\divvun.pfx" -PfxPassword $Env:CODESIGN_PW
+        displayName: "Build"
+        env:
+          CODESIGN_PW: $(pfxPassword)
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: "$(System.DefaultWorkingDirectory)/output/$(installer_name)"
+          artifactName: windows
+      - powershell: |
+          $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          . .\divvun-ci-config\repo\scripts\PahkatDeploySvn.ps1
+
+          PahkatDeploySvn -SvnUrl "${{ parameters.repositoryWin }}" -Artifact "$(System.DefaultWorkingDirectory)\output\$(installer_name)" -Package speller-${{ parameters.name }}-lo -Version $version
+        displayName: "Deploy to nightly channel"
+        env:
+          DEPLOY_SVN_USER: $(svnUser)
+          DEPLOY_SVN_PASSWORD: $(svnPassword)
+          DEPLOY_SVN_COMMIT: $(svnCommit)
+  - job: "Windows_msoffice"
+    pool:
+      vmImage: "vs2017-win2016"
+    variables:
+      installer_name: "speller-${{ parameters.name }}-mso.exe"
+    steps:
+      - bash: |
+          set -e
+          curl -sLo LockedList.zip https://nsis.sourceforge.io/mediawiki/images/d/d3/LockedList.zip
+          unzip LockedList.zip "Plugins/*" -d "C:\Program Files (x86)\NSIS" -q
+          unzip LockedList.zip "Plugins/x86-ansi/*" -d "C:\Program Files (x86)\NSIS" -q
+          unzip LockedList.zip "Plugins/x86-unicode/*" -d "C:\Program Files (x86)\NSIS" -q
+          curl -sLo pahkat.exe ${{ parameters.pahkat_win }}
+          curl -sLo win-reg-tool.exe ${{ parameters.win_reg_tool }}
+          curl -sLo divvun-bundler.exe ${{ parameters.divvun_bundler_win }}
+          git clone https://github.com/divvun/divvun-ci-config.git
+          openssl aes-256-cbc -d -in ./divvun-ci-config/config.txz.enc -pass pass:$DIVVUN_KEY -out config.txz -md md5
+          7z e config.txz
+          tar xf config.tar
+        displayName: "Install prerequisites"
+        env:
+          DIVVUN_KEY: $(divvunKey)
+      - ${{ each lang in parameters.languages }}:
+          - powershell: |
+              Write-Host "##vso[task.setvariable variable=bundler]$Env:BUNDLER -l '${{ coalesce(lang.nameWin, lang.name) }}'"
+            displayName: "Download Speller ${{ lang.name }}"
+      - powershell: |
+          $Env:PATH += ";C:\Program Files (x86)\Microsoft SDKs\ClickOnce\SignTool"
+          $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+          $Env:RUST_LOG = "info"
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          . .\divvun-ci-config\repo\scripts\DownloadSpeller.ps1
+          divvun-bundler -R -o output -c .\enc\creds\windows\divvun.pfx -V $version --uuid "{${{ parameters.uuidWinMso }}}" -H "${{ parameters.humanName }} MSOffice" -t win speller_mso -f "${{ parameters.name }}" --reg .\win-reg-tool.exe $(bundler)
+          Rename-Item -Path "output\${{ parameters.name }}-mso-$version.exe" -NewName "$(installer_name)"
+        displayName: "Build"
+        env:
+          SIGN_PFX_PASSWORD: $(pfxPassword)
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: "$(System.DefaultWorkingDirectory)/output/$(installer_name)"
+          artifactName: windows
+      - powershell: |
+          $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+          $version = [IO.File]::ReadAllText(".\version.txt").Trim()
+          . .\divvun-ci-config\repo\scripts\PahkatDeploySvn.ps1
+          PahkatDeploySvn -SvnUrl "${{ parameters.repositoryWin }}" -Artifact "$(System.DefaultWorkingDirectory)\output\$(installer_name)" -Package speller-${{ parameters.name }}-mso -Version $version
+        displayName: "Deploy to nightly channel"
+        env:
+          DEPLOY_SVN_USER: $(svnUser)
+          DEPLOY_SVN_PASSWORD: $(svnPassword)
+          DEPLOY_SVN_COMMIT: $(svnCommit)

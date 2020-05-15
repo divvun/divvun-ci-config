@@ -1,0 +1,93 @@
+jobs:
+- job: 'macOS'
+  pool:
+    vmImage: 'macOS-10.14'
+  steps:
+  - script: |
+      set -e
+      brew install imagemagick yq
+      wget ${{ parameters.pahkat_macos }} -O pahkat
+      chmod a+x pahkat
+      wget ${{ parameters.kbdgen_macos }} -O kbdgen.txz
+      tar xf kbdgen.txz
+      git clone https://github.com/divvun/divvun-ci-config.git
+      cd divvun-ci-config
+      sh ./install-macos.sh
+    displayName: 'Install prerequisites'
+    env:
+      DIVVUN_KEY: $(divvunKey)
+  - script: |
+      set -e
+      cd ${{ parameters.kbdgenFolder }}
+      export "PATH=$PATH:$(System.DefaultWorkingDirectory)"
+      export TARGET_BUNDLE_NAME=$(yq r targets/mac.yaml bundleName)
+      export TARGET_VERSION=$(yq r targets/mac.yaml version)
+      $(System.DefaultWorkingDirectory)/kbdgen --logging debug build mac -R --ci -o output .
+      cp "$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/$TARGET_BUNDLE_NAME $TARGET_VERSION.pkg" "$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/${{ parameters.name }}.pkg"
+      sh $(System.DefaultWorkingDirectory)/divvun-ci-config/repo/scripts/pahkat_deploy_svn.sh ${{ parameters.repositoryMac }} "$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/${{ parameters.name }}.pkg" ${{ parameters.packageName }} $TARGET_VERSION
+    displayName: 'Run kbdgen'
+    env:
+      DEPLOY_SVN_USER: $(svnUser)
+      DEPLOY_SVN_PASSWORD: $(svnPassword)
+      DEPLOY_SVN_COMMIT: $(svnCommit)
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifact'
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/${{ parameters.name }}.pkg'
+      artifactName: macos
+- job: 'Windows'
+  pool:
+    vmImage: 'vs2017-win2016'
+  steps:
+  - bash: |
+      set -e
+      curl -sLo pahkat.exe ${{ parameters.pahkat_win }}
+      curl -sLo kbdgen.exe ${{ parameters.kbdgen_win }}
+      # uploading the exe now as github 7z creates invalid archives
+      # 7z x kbdgen.txz
+      # 7z x -ttar kbdgen.tar
+      ls -lah
+      git clone https://github.com/divvun/divvun-ci-config.git
+      openssl aes-256-cbc -d -in ./divvun-ci-config/config.txz.enc -pass pass:$DIVVUN_KEY -out config.txz -md md5
+      7z e config.txz
+      tar xf config.tar
+      curl -o 6aa798a39c.zip https://x.brendan.so/6aa798a39c.zip
+      7z x 6aa798a39c.zip
+    displayName: 'Install prerequisites'
+    env:
+      DIVVUN_KEY: $(divvunKey)
+  - powershell: |
+      . .\divvun-ci-config\repo\scripts\PahkatDeploySvn.ps1
+      cd ${{ parameters.kbdgenFolder }}
+      $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+      $Env:CODESIGN_PFX = "$(System.DefaultWorkingDirectory)\enc\creds\windows\divvun.pfx"
+      $Env:MSKLC_PATH = "$(System.DefaultWorkingDirectory)\msklc1.4"
+      kbdgen --logging debug build win -R --ci -o output .
+      $appName = $(cat targets\win.yaml | Select-String -Pattern '^appName:.*').Matches[0].Value.Substring(8).Trim().Replace(" ", "_")
+      $version = $(cat targets\win.yaml | Select-String -Pattern '^version:.*').Matches[0].Value.Substring(8).Trim()
+      $sourcePath = "$(System.DefaultWorkingDirectory)\${{ parameters.kbdgenFolder }}\output\"+$appName+"_"+$version+".exe"
+      $sourcePathWin7 = "$(System.DefaultWorkingDirectory)\${{ parameters.kbdgenFolder }}\output\"+$appName+"_"+$version+".win7.exe"
+      Copy-Item $sourcePath "$(System.DefaultWorkingDirectory)\${{ parameters.kbdgenFolder }}\output\${{ parameters.packageName }}.exe"
+      Copy-Item $sourcePathWin7 "$(System.DefaultWorkingDirectory)\${{ parameters.kbdgenFolder }}\output\${{ parameters.packageName }}.win7.exe"
+    displayName: 'Run kbdgen'
+    env:
+      CODESIGN_PW: $(pfxPassword)
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifact win8+'
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/${{ parameters.packageName }}.exe'
+      artifactName: windows
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish artifact win7'
+    inputs:
+      pathtoPublish: '$(System.DefaultWorkingDirectory)/${{ parameters.kbdgenFolder }}/output/${{ parameters.packageName }}.win7.exe'
+      artifactName: windows
+  - powershell: |
+      $Env:PATH += ";$(System.DefaultWorkingDirectory)"
+      . .\divvun-ci-config\repo\scripts\PahkatDeploySvn.ps1
+      PahkatDeploySvn -SvnUrl ${{ parameters.repositoryWin }} -Artifact "$(System.DefaultWorkingDirectory)\${{ parameters.kbdgenFolder }}\output\${{ parameters.packageName }}.exe" -Package ${{ parameters.packageName }} -Version $version
+    displayName: 'Deploy to nightly channel'
+    env:
+      DEPLOY_SVN_USER: $(svnUser)
+      DEPLOY_SVN_PASSWORD: $(svnPassword)
+      DEPLOY_SVN_COMMIT: $(svnCommit)

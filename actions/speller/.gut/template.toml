@@ -1,0 +1,6 @@
+name = "CI Template"
+patterns = ["__NAME__", "__HUMAN_NAME__", "__VERSION__"]
+rev_id = 1
+required = [".github/workflows/spellers.yml", ".gut/manifest.toml"]
+optional = []
+ignored = []

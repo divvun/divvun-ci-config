@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>Inari Sami Speller LibreOffice</title>
+  <options customize="never" rootVolumeOnly="true" />
+  <choices-outline>
+    <line choice="default">
+      <line choice="no.uit.spellers.libreoffice.smn"/>
+    </line>
+  </choices-outline>
+  <choice id="default"/>
+  <choice id="no.uit.spellers.libreoffice.smn" visible="false">
+    <pkg-ref id="no.uit.spellers.libreoffice.smn"/>
+  </choice>
+  <pkg-ref auth="root" id="no.uit.spellers.libreoffice.smn" version="0">speller-smn-lo.pkg</pkg-ref>
+</installer-gui-script>
