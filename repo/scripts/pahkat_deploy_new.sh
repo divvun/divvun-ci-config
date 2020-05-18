@@ -66,15 +66,17 @@ MAX_RETRIES=5
 
 PAYLOAD_URL=""
 
+
 while [ $RETRIES -le $MAX_RETRIES ]
 do
   rm -rf "$INTERMEDIATE_REPO"
   svn checkout --depth empty $DEPLOY_SVN_REPO_ARTIFACTS $INTERMEDIATE_REPO
   cd $INTERMEDIATE_REPO
 
-  VERSION=$(date -u +%Y%m%dT%H%M%SZ)
+  # VERSION=$(date -u +%Y%m%dT%H%M%SZ)
   DEPLOY_EXTENSION=${DEPLOY_SVN_PKG_PAYLOAD##*.}
-  DEPLOY_AS="$DEPLOY_SVN_PKG_ID-$VERSION.$DEPLOY_EXTENSION"
+  DEPLOY_AS="$DEPLOY_SVN_PKG_ID-$DEPLOY_SVN_PKG_VERSION.$DEPLOY_EXTENSION"
+  echo "[!] Attempting to deploy $DEPLOY_AS"
 
   cp "$DEPLOY_SVN_PKG_PAYLOAD" "./$DEPLOY_AS"
   svn add "./$DEPLOY_AS"
@@ -85,6 +87,8 @@ do
   svn status
   if [ "$DEPLOY_SVN_COMMIT" == "1" ]; then
       set +e
+      echo "[!] Committing $PAYLOAD_URL"
+
       svn commit -m "Automated Deploy: $DEPLOY_SVN_PKG_ID" --username=$DEPLOY_SVN_USER --password=$DEPLOY_SVN_PASSWORD
       if [[ $? -eq 0 ]]; then
         echo "Successfully deployed $DEPLOY_SVN_PKG_ID to $DEPLOY_SVN_REPO"
@@ -103,7 +107,7 @@ do
   fi
 done
 
-echo $VERSION
+echo $DEPLOY_SVN_PKG_VERSION
 echo $PAYLOAD_URL
 
 if [ -z "$PAYLOAD_URL" ]; then
@@ -113,6 +117,7 @@ fi
 
 while [ $RETRIES -le $MAX_RETRIES ]
 do
+  echo "[!] Updating repository index"
   rm -rf "$INTERMEDIATE_REPO"
   svn checkout --depth immediates $DEPLOY_SVN_REPO $INTERMEDIATE_REPO
   cd $INTERMEDIATE_REPO
@@ -120,8 +125,9 @@ do
   svn up string --set-depth=infinity
   svn up index.toml
 
-  PAHKAT_VERSION="$DEPLOY_SVN_PKG_VERSION-nightly.$VERSION"
-  pahkat-repomgr package update "$DEPLOY_SVN_PKG_ID" -r . -c nightly -p "$DEPLOY_SVN_PKG_PLATFORM" -u "$PAYLOAD_URL" -v "$PAHKAT_VERSION" $PAYLOAD_METADATA_FLAG
+  echo "[!] Adding $DEPLOY_SVN_PKG_ID $DEPLOY_SVN_PKG_VERSION for platform $DEPLOY_SVN_PKG_PLATFORM on channel 'nightly'"
+  echo "    URL: $PAYLOAD_URL"
+  pahkat-repomgr package update "$DEPLOY_SVN_PKG_ID" -r . -c nightly -p "$DEPLOY_SVN_PKG_PLATFORM" -u "$PAYLOAD_URL" -v "$DEPLOY_SVN_PKG_VERSION" $PAYLOAD_METADATA_FLAG
   if [[ $? -ne 0 ]]; then
     echo "Updating index.toml failed"
     exit 1
@@ -138,6 +144,7 @@ do
   svn status
   if [ "$DEPLOY_SVN_COMMIT" == "1" ]; then
       set +e
+      echo "[!] Committing repository index update"
       svn commit -m "Automated Deploy: $DEPLOY_SVN_PKG_ID" --username=$DEPLOY_SVN_USER --password=$DEPLOY_SVN_PASSWORD
       if [[ $? -eq 0 ]]; then
         echo "Successfully deployed $DEPLOY_SVN_PKG_ID to $DEPLOY_SVN_REPO"
