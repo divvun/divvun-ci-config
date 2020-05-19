@@ -51,6 +51,7 @@ jobs:
       - name: Install Dependencies IOS
         if: steps.bundleCheck.outputs.bundleExists == 'true' && matrix.type == 'keyboard_ios'
         run: |
+          rustup component add rustfmt
           rustup target add aarch64-apple-ios
           rustup target add x86_64-apple-ios
           brew install imagemagick
