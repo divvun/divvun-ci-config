@@ -6,8 +6,8 @@ REGEX=$1
 
 # Get all the repos and add CI
 gut clone -o giellalt -r $REGEX
-gut checkout -o giellalt -r $REGEX -b develop
-gut ci export -t $SCRIPTPATH/keyboard -o giellalt -r $REGEX --output /tmp/x.toml --script $SCRIPTPATH/autoconf_json.sh
+gut checkout -o giellalt -r $REGEX -b master
+gut ci export -t $SCRIPTPATH/keyboard -o giellalt -r $REGEX --output /tmp/x.toml --script $SCRIPTPATH/keyboard_name_json.sh
 gut ci generate -t $SCRIPTPATH/keyboard -o giellalt -r $REGEX -d /tmp/x.toml
 rm /tmp/x.toml
 gut commit -o giellalt -r $REGEX -m "Add initial CI configuration"
