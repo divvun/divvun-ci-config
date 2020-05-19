@@ -1,0 +1,11 @@
+[package]
+name = "__NAME__"
+
+[bundles.keyboard_win]
+package = "keyboard-__NAME__"
+repo = "https://pahkat.uit.no/main/"
+
+[bundles.keyboard_macos]
+package = "keyboard-__NAME__"
+repo = "https://pahkat.uit.no/main/"
+

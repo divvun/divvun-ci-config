@@ -1,0 +1,6 @@
+name = "CI Template"
+patterns = ["__NAME__"]
+rev_id = 1
+required = [".github/workflows/build.yml", ".gut/manifest.toml"]
+optional = []
+ignored = []
