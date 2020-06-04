@@ -1,0 +1,17 @@
+{
+  "name": "actions",
+  "version": "1.0.0",
+  "description": "",
+  "main": "convert_old_manifests.js",
+  "dependencies": {
+    "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@iarna/toml": "^2.2.5"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
