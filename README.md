@@ -1,6 +1,6 @@
 Take the unencrypted data and run:
 
-`tar cf - enc | xz -9c | openssl aes-256-cbc -pass pass:$DIVVUN_KEY -out config.txz.enc`
+`tar cf - enc | xz -9c | openssl aes-256-cbc -md md5 -pass pass:$DIVVUN_KEY -out config.txz.enc`
 
 Commit the encrypted file, delete the unencrypted content.
 
