@@ -7,3 +7,12 @@ Commit the encrypted file, delete the unencrypted content.
 To decrypt:
 
 `openssl aes-256-cbc -d -in config.txz.enc -pass pass:$DIVVUN_KEY | tar xf -`
+
+# Development
+
+For development purposes, the unencrypted Android store `dev.jks` is added. This is purely for testing locally, but normally signing should be done on CI.
+
+Store parameters:
+- keyAlias: "developmentStore"
+- storePassword: "amazingStorePassword"
+- keyPassword: "amazingKeyPassword",
