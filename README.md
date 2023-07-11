@@ -1,10 +1,10 @@
 # divvun-ci-config
 
-This repo contains environment variables and setup scripts used by Divvun CI.
+This repo contains encrypted environment variables, secrets, and setup scripts used by Divvun CI. It's used by the [taskcluster-gha](https://github.com/divvun/taskcluster-gha) repo. During a CI run, this repo is downloaded and decrypted with `$DIVVUN_KEY`, which is stored in [taskcluster secrets](https://divvun-tc.giellalt.org/secrets) (you'll need access).
 
 ### Decrypting
 
-The following command will create a decrypt and decompress everything into a folder called `enc/`:
+The following command will decrypt and decompress everything into a folder called `enc/`:
 
 `openssl aes-256-cbc -d -in ./config.txz.enc -pass pass:$DIVVUN_KEY -md md5 | xz -d | tar xvf -`
 
