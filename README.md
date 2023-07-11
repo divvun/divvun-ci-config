@@ -1,6 +1,6 @@
 # divvun-ci-config
 
-This repo contains environement variables and setup scripts used by Divvun CI.
+This repo contains environment variables and setup scripts used by Divvun CI.
 
 ### Decrypting
 
